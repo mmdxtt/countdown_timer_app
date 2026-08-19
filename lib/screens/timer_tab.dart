@@ -15,9 +15,14 @@ class TimerTab extends StatefulWidget {
 }
 
 class _TimerTabState extends State<TimerTab> {
+  static const List<String> _categories = ['学习', '工作', '健身', '休息', '其他'];
+
   final TextEditingController _hourCtrl = TextEditingController();
   final TextEditingController _minuteCtrl = TextEditingController();
   final TextEditingController _secondCtrl = TextEditingController();
+  final TextEditingController _subLabelCtrl = TextEditingController();
+
+  String? _category;
 
   TimerController get c => widget.controller;
 
@@ -25,14 +30,30 @@ class _TimerTabState extends State<TimerTab> {
   void initState() {
     super.initState();
     c.onNormalComplete = _showCompletedSnack;
+    c.addListener(_onControllerChanged);
   }
 
   @override
   void dispose() {
+    c.removeListener(_onControllerChanged);
     _hourCtrl.dispose();
     _minuteCtrl.dispose();
     _secondCtrl.dispose();
+    _subLabelCtrl.dispose();
     super.dispose();
+  }
+
+  /// 消费「再来一次」的预填数据。
+  void _onControllerChanged() {
+    final target = c.pendingTarget;
+    if (target == null) return;
+    _hourCtrl.text = target.inHours > 0 ? '${target.inHours}' : '';
+    _minuteCtrl.text = target.inMinutes % 60 > 0 ? '${target.inMinutes % 60}' : '';
+    _secondCtrl.text = target.inSeconds % 60 > 0 ? '${target.inSeconds % 60}' : '';
+    _subLabelCtrl.text = c.pendingSubLabel ?? '';
+    _category = c.pendingCategory;
+    c.clearPending();
+    setState(() {});
   }
 
   void _showCompletedSnack() {
@@ -59,7 +80,8 @@ class _TimerTabState extends State<TimerTab> {
       _snack('请输入大于 0 的倒计时时长');
       return;
     }
-    c.start(d);
+    final sub = _subLabelCtrl.text.trim();
+    c.start(d, category: _category, subLabel: sub.isEmpty ? null : sub);
   }
 
   Future<void> _onReset() async {
@@ -87,8 +109,10 @@ class _TimerTabState extends State<TimerTab> {
       _hourCtrl.clear();
       _minuteCtrl.clear();
       _secondCtrl.clear();
+      _subLabelCtrl.clear();
+      _category = null;
     });
-    c.reset();
+    await c.reset();
   }
 
   Future<void> _onStop() async {
@@ -120,7 +144,7 @@ class _TimerTabState extends State<TimerTab> {
     if (!mounted) return;
     switch (choice) {
       case 'abandon':
-        c.abandon();
+        await c.abandon();
         break;
       case 'early':
         final saved = await c.completeEarly();
@@ -148,7 +172,7 @@ class _TimerTabState extends State<TimerTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
@@ -182,8 +206,17 @@ class _TimerTabState extends State<TimerTab> {
                         : null,
                   ),
                 ),
-                const SizedBox(height: 28),
-                if (idle) _buildInput() else _buildRunningInfo(),
+                const SizedBox(height: 24),
+                if (idle)
+                  Column(
+                    children: [
+                      _buildInput(),
+                      const SizedBox(height: 20),
+                      _buildLabelSelector(),
+                    ],
+                  )
+                else
+                  _buildRunningInfo(),
                 const Spacer(),
                 _buildButtons(idle, running, paused),
                 const SizedBox(height: 14),
@@ -251,14 +284,51 @@ class _TimerTabState extends State<TimerTab> {
     );
   }
 
+  Widget _buildLabelSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (final cat in _categories)
+              ChoiceChip(
+                label: Text(cat),
+                selected: _category == cat,
+                onSelected: (_) => setState(() {
+                  _category = _category == cat ? null : cat;
+                }),
+              ),
+          ],
+        ),
+        if (_category != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: TextField(
+              controller: _subLabelCtrl,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: '二级标签（可选）',
+                hintText: '如：数学',
+                border: OutlineInputBorder(),
+                isDense: true,
+                prefixIcon: Icon(Icons.label_outline, size: 18),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildRunningInfo() {
     final scheme = Theme.of(context).colorScheme;
+    final label = c.category;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -270,6 +340,13 @@ class _TimerTabState extends State<TimerTab> {
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
               ],
+            ),
+            Expanded(
+              child: Center(
+                child: label == null
+                    ? const SizedBox.shrink()
+                    : _labelChip(label, c.subLabel),
+              ),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -284,6 +361,22 @@ class _TimerTabState extends State<TimerTab> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _labelChip(String cat, String? sub) {
+    final text = (sub == null || sub.isEmpty) ? cat : '$cat·$sub';
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 12, color: scheme.onSecondaryContainer),
       ),
     );
   }

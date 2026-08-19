@@ -16,10 +16,19 @@ class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
 
   @override
+  void initState() {
+    super.initState();
+    // 启动时尝试恢复「进行中」的任务（若 App 被系统杀掉/重启）
+    _controller.restore();
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
+
+  void _goToTimer() => setState(() => _index = 0);
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _index,
         children: [
           TimerTab(controller: _controller),
-          StatsTab(controller: _controller),
+          StatsTab(controller: _controller, onGoToTimer: _goToTimer),
         ],
       ),
       bottomNavigationBar: NavigationBar(
