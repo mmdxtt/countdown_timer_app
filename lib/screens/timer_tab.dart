@@ -20,6 +20,8 @@ class _TimerTabState extends State<TimerTab> {
   static const Color _danger = Color(0xFFFF3B30); // red（暂停 / 停止）
   static const Color _startColor = Color(0xFF00C853); // green（开始）
   static const Color _resumeColor = Color(0xFFFF9500); // orange（继续）
+  static const Color _progressColor = Color(0xFF007AFF); // blue（进度环）
+  static const Color _trackColor = Color(0xFFE8E8E8); // 进度环轨道
 
   final TextEditingController _hourCtrl = TextEditingController();
   final TextEditingController _minuteCtrl = TextEditingController();
@@ -198,17 +200,19 @@ class _TimerTabState extends State<TimerTab> {
                       children: [
                         if (idle) _buildInput() else _buildStatusInfo(),
                         const SizedBox(height: 16),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            formatHms(display),
-                            maxLines: 1,
-                            style: TextStyle(
-                              fontSize: fontSize,
-                              fontWeight: FontWeight.w600,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                              letterSpacing: 2,
-                              color: Colors.black87,
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              formatHms(display),
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: fontSize,
+                                fontWeight: FontWeight.w600,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                                letterSpacing: 2,
+                                color: Colors.black87,
+                              ),
                             ),
                           ),
                         ),
@@ -316,6 +320,9 @@ class _TimerTabState extends State<TimerTab> {
 
   Widget _buildButtons(bool idle, bool running, bool paused) {
     final canPause = running && c.pauseCount < TimerController.maxPauses;
+    final progress = c.target.inMilliseconds <= 0
+        ? 0.0
+        : (c.elapsed.inMilliseconds / c.target.inMilliseconds).clamp(0.0, 1.0);
 
     String mainLabel;
     IconData mainIcon;
@@ -342,18 +349,33 @@ class _TimerTabState extends State<TimerTab> {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          width: 180,
-          height: 56,
-          child: FilledButton.icon(
-            onPressed: mainOnPressed,
-            icon: Icon(mainIcon, size: 22),
-            label: Text(mainLabel),
-            style: FilledButton.styleFrom(
-              backgroundColor: mainColor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-              textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-            ),
+          width: 196,
+          height: 196,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CircularProgressIndicator(
+                value: progress,
+                strokeWidth: 4,
+                color: _progressColor,
+                backgroundColor: _trackColor,
+              ),
+              SizedBox(
+                width: 180,
+                height: 56,
+                child: FilledButton.icon(
+                  onPressed: mainOnPressed,
+                  icon: Icon(mainIcon, size: 22),
+                  label: Text(mainLabel),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: mainColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                    textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 12),
