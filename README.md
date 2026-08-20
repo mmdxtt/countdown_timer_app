@@ -1,11 +1,6 @@
-
-
-> **本项目由AI生成**
-
 # 倒计时App
 
-一个纯本地运行的个人倒计时 App：**无登录、无网络、无广告、数据全部保存在本机**。  
-基于 Flutter 实现，支持直接打包 Android APK。
+一个本地运行的个人倒计时 App，基于 Flutter 实现
 
 完整变更历史见 [CHANGELOG.md](CHANGELOG.md)。
 

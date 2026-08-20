@@ -31,15 +31,9 @@ class CountdownApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
+        scaffoldBackgroundColor: Colors.white,
       ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seed,
-          brightness: Brightness.dark,
-        ),
-      ),
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.light,
       home: const HomeScreen(),
     );
   }

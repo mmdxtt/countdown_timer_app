@@ -16,6 +16,10 @@ class TimerTab extends StatefulWidget {
 
 class _TimerTabState extends State<TimerTab> {
   static const List<String> _categories = ['学习', '工作', '健身', '休息', '其他'];
+  static const Color _accent = Color(0xFF3F51B5); // indigo
+  static const Color _danger = Color(0xFFFF3B30); // red（暂停 / 停止）
+  static const Color _startColor = Color(0xFF00C853); // green（开始）
+  static const Color _resumeColor = Color(0xFFFF9500); // orange（继续）
 
   final TextEditingController _hourCtrl = TextEditingController();
   final TextEditingController _minuteCtrl = TextEditingController();
@@ -166,66 +170,57 @@ class _TimerTabState extends State<TimerTab> {
         final running = c.isRunning;
         final paused = c.isPaused;
         final display = idle ? _readInput() : c.remaining;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 16),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    formatHms(display),
-                    style: const TextStyle(
-                      fontSize: 68,
-                      fontWeight: FontWeight.w700,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                      letterSpacing: 2,
+        final screenWidth = MediaQuery.of(context).size.width;
+        final fontSize = (screenWidth * 0.18).clamp(80.0, 120.0);
+
+        return Scaffold(
+          backgroundColor: Colors.white,
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 顶部：App 名称
+                  const Text(
+                    '倒计时',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _statusText(),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.primary,
+                  // 中间：数字 + 按钮（垂直居中）
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (idle) _buildInput() else _buildStatusInfo(),
+                        const SizedBox(height: 16),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            formatHms(display),
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: fontSize,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                              letterSpacing: 2,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        _buildButtons(idle, running, paused),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '剩余暂停次数：${c.remainingPauses} / ${TimerController.maxPauses}',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: c.remainingPauses == 0
-                        ? Theme.of(context).colorScheme.error
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                if (idle)
-                  Column(
-                    children: [
-                      _buildInput(),
-                      const SizedBox(height: 20),
-                      _buildLabelSelector(),
-                    ],
-                  )
-                else
-                  _buildRunningInfo(),
-                const Spacer(),
-                _buildButtons(idle, running, paused),
-                const SizedBox(height: 14),
-                Text(
-                  '提示：安卓切后台后计时可能被系统暂停，建议保持前台运行。',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-              ],
+                  // 底部：二级输入 + 类别标签 + 提示图标
+                  _buildBottomArea(idle),
+                ],
+              ),
             ),
           ),
         );
@@ -251,12 +246,12 @@ class _TimerTabState extends State<TimerTab> {
         _numberField(_hourCtrl, '时', 3),
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 8),
-          child: Text(':', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+          child: Text(':', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black54)),
         ),
         _numberField(_minuteCtrl, '分', 2),
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 8),
-          child: Text(':', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+          child: Text(':', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black54)),
         ),
         _numberField(_secondCtrl, '秒', 2),
       ],
@@ -265,7 +260,7 @@ class _TimerTabState extends State<TimerTab> {
 
   Widget _numberField(TextEditingController ctrl, String label, int maxLength) {
     return SizedBox(
-      width: 78,
+      width: 72,
       child: TextField(
         controller: ctrl,
         keyboardType: TextInputType.number,
@@ -276,38 +271,138 @@ class _TimerTabState extends State<TimerTab> {
         decoration: InputDecoration(
           labelText: label,
           counterText: '',
+          filled: true,
+          fillColor: Colors.white,
           border: const OutlineInputBorder(),
           contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
         ),
-        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
       ),
     );
   }
 
-  Widget _buildLabelSelector() {
+  Widget _buildStatusInfo() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
+        Text(
+          _statusText(),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _accent),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '目标 ${formatHms(c.target)} · 已计时 ${formatHms(c.elapsed)}',
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '剩余暂停 ${c.remainingPauses} / ${TimerController.maxPauses}',
+          style: TextStyle(
+            fontSize: 13,
+            color: c.remainingPauses == 0 ? _danger : Colors.grey.shade600,
+          ),
+        ),
+        if (c.category != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            (c.subLabel == null || c.subLabel!.isEmpty)
+                ? c.category!
+                : '${c.category}·${c.subLabel}',
+            style: const TextStyle(fontSize: 13, color: _accent),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildButtons(bool idle, bool running, bool paused) {
+    final canPause = running && c.pauseCount < TimerController.maxPauses;
+
+    String mainLabel;
+    IconData mainIcon;
+    Color mainColor;
+    VoidCallback? mainOnPressed;
+    if (idle) {
+      mainLabel = '开始';
+      mainIcon = Icons.play_arrow;
+      mainColor = _startColor;
+      mainOnPressed = _onStart;
+    } else if (paused) {
+      mainLabel = '继续';
+      mainIcon = Icons.play_arrow;
+      mainColor = _resumeColor;
+      mainOnPressed = c.togglePause;
+    } else {
+      mainLabel = '暂停';
+      mainIcon = Icons.pause;
+      mainColor = _danger;
+      mainOnPressed = canPause ? c.togglePause : null; // 第 4 次暂停置灰
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 180,
+          height: 56,
+          child: FilledButton.icon(
+            onPressed: mainOnPressed,
+            icon: Icon(mainIcon, size: 22),
+            label: Text(mainLabel),
+            style: FilledButton.styleFrom(
+              backgroundColor: mainColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
           children: [
-            for (final cat in _categories)
-              ChoiceChip(
-                label: Text(cat),
-                selected: _category == cat,
-                onSelected: (_) => setState(() {
-                  _category = _category == cat ? null : cat;
-                }),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: (running || paused) ? _onStop : null,
+                icon: const Icon(Icons.stop, size: 18),
+                label: const Text('停止'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _danger,
+                  side: const BorderSide(color: _danger, width: 1.2),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
               ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _onReset,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('重置'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.black54,
+                  side: const BorderSide(color: Colors.black26, width: 1.2),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              ),
+            ),
           ],
         ),
-        if (_category != null)
+      ],
+    );
+  }
+
+  Widget _buildBottomArea(bool idle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (idle && _category != null)
           Padding(
-            padding: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.only(bottom: 12),
             child: TextField(
               controller: _subLabelCtrl,
               textInputAction: TextInputAction.done,
+              style: const TextStyle(color: Colors.black87),
               decoration: const InputDecoration(
                 labelText: '二级标签（可选）',
                 hintText: '如：数学',
@@ -317,133 +412,57 @@ class _TimerTabState extends State<TimerTab> {
               ),
             ),
           ),
-      ],
-    );
-  }
-
-  Widget _buildRunningInfo() {
-    final scheme = Theme.of(context).colorScheme;
-    final label = c.category;
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('目标时长', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-                const SizedBox(height: 2),
-                Text(
-                  formatHms(c.target),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-            Expanded(
-              child: Center(
-                child: label == null
-                    ? const SizedBox.shrink()
-                    : _labelChip(label, c.subLabel),
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('已计时', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-                const SizedBox(height: 2),
-                Text(
-                  formatHms(c.elapsed),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _labelChip(String cat, String? sub) {
-    final text = (sub == null || sub.isEmpty) ? cat : '$cat·$sub';
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: scheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 12, color: scheme.onSecondaryContainer),
-      ),
-    );
-  }
-
-  Widget _buildButtons(bool idle, bool running, bool paused) {
-    final scheme = Theme.of(context).colorScheme;
-    final canPause = running && c.pauseCount < TimerController.maxPauses;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
         Row(
           children: [
-            Expanded(
-              child: _btn('开始', Icons.play_arrow,
-                  onPressed: idle ? _onStart : null, filled: true),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _btn(
-                paused ? '继续' : '暂停',
-                paused ? Icons.play_arrow : Icons.pause,
-                onPressed: (paused || canPause) ? c.togglePause : null,
-                filled: true,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _btn(
-                '停止',
-                Icons.stop,
-                onPressed: (running || paused) ? _onStop : null,
-                filled: true,
-                color: scheme.error,
-              ),
-            ),
+            for (final cat in _categories)
+              Expanded(child: _categoryLabel(cat, idle)),
           ],
         ),
-        const SizedBox(height: 10),
-        _btn('重置', Icons.refresh, onPressed: _onReset),
+        const SizedBox(height: 4),
+        Center(
+          child: Tooltip(
+            message: '安卓切后台后计时可能被系统暂停，建议保持前台运行',
+            child: Icon(Icons.info_outline, size: 16, color: Colors.grey.shade400),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _btn(
-    String label,
-    IconData icon, {
-    VoidCallback? onPressed,
-    bool filled = false,
-    Color? color,
-  }) {
-    final EdgeInsets padding = const EdgeInsets.symmetric(vertical: 14);
-    if (filled) {
-      return FilledButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 20),
-        label: Text(label),
-        style: FilledButton.styleFrom(
-          padding: padding,
-          backgroundColor: color,
+  /// 底部类别标签：纯文字、无背景，选中时下划线高亮。
+  Widget _categoryLabel(String label, bool idle) {
+    final bool selected = idle ? (_category == label) : (c.category == label);
+    return InkWell(
+      onTap: idle ? () => _onCategoryTap(label) : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                color: selected ? _accent : Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              height: 2,
+              width: 22,
+              color: selected ? _accent : Colors.transparent,
+            ),
+          ],
         ),
-      );
-    }
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 20),
-      label: Text(label),
-      style: OutlinedButton.styleFrom(padding: padding),
+      ),
     );
+  }
+
+  void _onCategoryTap(String label) {
+    setState(() {
+      _category = (_category == label) ? null : label;
+      _subLabelCtrl.clear();
+    });
   }
 }
