@@ -196,8 +196,8 @@ class TimerController extends ChangeNotifier {
     _pauseCount = 0;
     notifyListeners();
     // 归零提醒：连续震动三次 + 结束铃声（同步触发）
-    Feedback.hapticTriple();
-    Feedback.alarm();
+    AppFeedback.hapticTriple();
+    AppFeedback.alarm();
     onNormalComplete?.call();
     await _saveRecord(
       targetSeconds: _target.inSeconds,

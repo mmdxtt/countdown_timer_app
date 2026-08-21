@@ -7,8 +7,8 @@ import 'package:vibration/vibration.dart';
 ///
 /// - 震动仅 Android 生效（已声明 VIBRATE 权限），其他平台静默降级；
 /// - 声音用 Flutter 内置的 SystemSound（系统默认音效），零第三方依赖。
-class Feedback {
-  Feedback._();
+class AppFeedback {
+  AppFeedback._();
 
   /// 短震一次（10ms）：点击「开始」。
   static void hapticTap() {

@@ -85,21 +85,21 @@ class _TimerTabState extends State<TimerTab> {
       _snack('请点击数字设置倒计时时长');
       return;
     }
-    Feedback.click();
-    Feedback.hapticTap();
+    AppFeedback.click();
+    AppFeedback.hapticTap();
     final sub = _subLabelCtrl.text.trim();
     c.start(d, category: _category, subLabel: sub.isEmpty ? null : sub);
   }
 
   void _onPauseResume() {
-    Feedback.click();
-    Feedback.hapticDouble();
+    AppFeedback.click();
+    AppFeedback.hapticDouble();
     c.togglePause();
   }
 
   Future<void> _onReset() async {
-    Feedback.click();
-    Feedback.hapticLong();
+    AppFeedback.click();
+    AppFeedback.hapticLong();
     // 运行/暂停中先停止并归零控制器状态
     await c.reset();
     if (!mounted) return;
@@ -117,7 +117,7 @@ class _TimerTabState extends State<TimerTab> {
 
   Future<void> _onStop() async {
     if (!c.isRunning && !c.isPaused) return;
-    Feedback.click();
+    AppFeedback.click();
     c.requestStop();
     if (!mounted) return;
     final choice = await showDialog<String>(
@@ -129,21 +129,21 @@ class _TimerTabState extends State<TimerTab> {
         actions: [
           TextButton(
             onPressed: () {
-              Feedback.click();
+              AppFeedback.click();
               Navigator.pop(ctx, 'abandon');
             },
             child: const Text('放弃当前任务'),
           ),
           TextButton(
             onPressed: () {
-              Feedback.click();
+              AppFeedback.click();
               Navigator.pop(ctx, 'early');
             },
             child: const Text('提前完成任务'),
           ),
           FilledButton(
             onPressed: () {
-              Feedback.click();
+              AppFeedback.click();
               Navigator.pop(ctx, 'cancel');
             },
             child: const Text('取消'),
@@ -170,7 +170,7 @@ class _TimerTabState extends State<TimerTab> {
   /// 弹出底部滚轮选择器（时 / 分 / 秒三列），确认后回填数字。
   Future<void> _showTimePicker() async {
     if (!c.isIdle) return; // 运行/暂停中点击数字不弹选择器
-    Feedback.click();
+    AppFeedback.click();
     final initial = _readInput();
     final picked = await showModalBottomSheet<Duration>(
       context: context,
@@ -499,7 +499,7 @@ class _TimerTabState extends State<TimerTab> {
   }
 
   void _onCategoryTap(String label) {
-    Feedback.click();
+    AppFeedback.click();
     setState(() {
       _category = (_category == label) ? null : label;
       _subLabelCtrl.clear();
@@ -539,14 +539,14 @@ class _TimePickerSheetState extends State<_TimePickerSheet> {
               children: [
                 TextButton(
                   onPressed: () {
-                    Feedback.click();
+                    AppFeedback.click();
                     Navigator.pop(context);
                   },
                   child: const Text('取消', style: TextStyle(color: Colors.black54)),
                 ),
                 TextButton(
                   onPressed: () {
-                    Feedback.click();
+                    AppFeedback.click();
                     Navigator.pop(context, _value);
                   },
                   child: const Text(
