@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:vibration/vibration.dart';
 
 import '../models/timer_record.dart';
+import '../utils/feedback.dart';
 import 'database_service.dart';
 
 enum TimerStatus { idle, running, paused }
@@ -195,7 +195,9 @@ class TimerController extends ChangeNotifier {
     _status = TimerStatus.idle;
     _pauseCount = 0;
     notifyListeners();
-    Vibration.vibrate(duration: 1500);
+    // 归零提醒：连续震动三次 + 结束铃声（同步触发）
+    Feedback.hapticTriple();
+    Feedback.alarm();
     onNormalComplete?.call();
     await _saveRecord(
       targetSeconds: _target.inSeconds,

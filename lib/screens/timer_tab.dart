@@ -1,9 +1,10 @@
 import 'dart:ui' show FontFeature;
 
+import 'package:flutter/cupertino.dart' show CupertinoTimerPicker, CupertinoTimerPickerMode;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../services/timer_controller.dart';
+import '../utils/feedback.dart';
 import '../utils/formatters.dart';
 
 class TimerTab extends StatefulWidget {
@@ -22,13 +23,17 @@ class _TimerTabState extends State<TimerTab> {
   static const Color _resumeColor = Color(0xFFFF9500); // orange（继续）
   static const Color _progressColor = Color(0xFF007AFF); // blue（进度环）
   static const Color _trackColor = Color(0xFFE8E8E8); // 进度环轨道
+  static const Color _flashColor = Color(0xFFFFE4E0); // 重置闪烁浅红
 
-  final TextEditingController _hourCtrl = TextEditingController();
-  final TextEditingController _minuteCtrl = TextEditingController();
-  final TextEditingController _secondCtrl = TextEditingController();
   final TextEditingController _subLabelCtrl = TextEditingController();
 
+  // 选中时长（时 / 分 / 秒），替代原三个数字输入框。
+  int _hours = 0;
+  int _minutes = 0;
+  int _seconds = 0;
+
   String? _category;
+  bool _flashRed = false; // 重置时数字闪烁标记
 
   TimerController get c => widget.controller;
 
@@ -42,9 +47,6 @@ class _TimerTabState extends State<TimerTab> {
   @override
   void dispose() {
     c.removeListener(_onControllerChanged);
-    _hourCtrl.dispose();
-    _minuteCtrl.dispose();
-    _secondCtrl.dispose();
     _subLabelCtrl.dispose();
     super.dispose();
   }
@@ -53,13 +55,14 @@ class _TimerTabState extends State<TimerTab> {
   void _onControllerChanged() {
     final target = c.pendingTarget;
     if (target == null) return;
-    _hourCtrl.text = target.inHours > 0 ? '${target.inHours}' : '';
-    _minuteCtrl.text = target.inMinutes % 60 > 0 ? '${target.inMinutes % 60}' : '';
-    _secondCtrl.text = target.inSeconds % 60 > 0 ? '${target.inSeconds % 60}' : '';
-    _subLabelCtrl.text = c.pendingSubLabel ?? '';
-    _category = c.pendingCategory;
+    setState(() {
+      _hours = target.inHours;
+      _minutes = target.inMinutes % 60;
+      _seconds = target.inSeconds % 60;
+      _subLabelCtrl.text = c.pendingSubLabel ?? '';
+      _category = c.pendingCategory;
+    });
     c.clearPending();
-    setState(() {});
   }
 
   void _showCompletedSnack() {
@@ -73,56 +76,48 @@ class _TimerTabState extends State<TimerTab> {
     );
   }
 
-  Duration _readInput() {
-    final h = int.tryParse(_hourCtrl.text) ?? 0;
-    final m = int.tryParse(_minuteCtrl.text) ?? 0;
-    final s = int.tryParse(_secondCtrl.text) ?? 0;
-    return Duration(hours: h, minutes: m, seconds: s);
-  }
+  Duration _readInput() =>
+      Duration(hours: _hours, minutes: _minutes, seconds: _seconds);
 
   void _onStart() {
     final d = _readInput();
     if (d <= Duration.zero) {
-      _snack('请输入大于 0 的倒计时时长');
+      _snack('请点击数字设置倒计时时长');
       return;
     }
+    Feedback.click();
+    Feedback.hapticTap();
     final sub = _subLabelCtrl.text.trim();
     c.start(d, category: _category, subLabel: sub.isEmpty ? null : sub);
   }
 
+  void _onPauseResume() {
+    Feedback.click();
+    Feedback.hapticDouble();
+    c.togglePause();
+  }
+
   Future<void> _onReset() async {
-    if (c.isRunning || c.isPaused) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('清空当前任务'),
-          content: const Text('确定要清空当前倒计时任务吗？本次计时将不会被保存。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确定'),
-            ),
-          ],
-        ),
-      );
-      if (ok != true || !mounted) return;
-    }
-    setState(() {
-      _hourCtrl.clear();
-      _minuteCtrl.clear();
-      _secondCtrl.clear();
-      _subLabelCtrl.clear();
-      _category = null;
-    });
+    Feedback.click();
+    Feedback.hapticLong();
+    // 运行/暂停中先停止并归零控制器状态
     await c.reset();
+    if (!mounted) return;
+    setState(() {
+      _hours = 0;
+      _minutes = 0;
+      _seconds = 0;
+      _category = null;
+      _subLabelCtrl.clear();
+      _flashRed = true;
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (mounted) setState(() => _flashRed = false);
   }
 
   Future<void> _onStop() async {
     if (!c.isRunning && !c.isPaused) return;
+    Feedback.click();
     c.requestStop();
     if (!mounted) return;
     final choice = await showDialog<String>(
@@ -133,15 +128,24 @@ class _TimerTabState extends State<TimerTab> {
         content: const Text('请选择如何处理本次计时：'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, 'abandon'),
+            onPressed: () {
+              Feedback.click();
+              Navigator.pop(ctx, 'abandon');
+            },
             child: const Text('放弃当前任务'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(ctx, 'early'),
+            onPressed: () {
+              Feedback.click();
+              Navigator.pop(ctx, 'early');
+            },
             child: const Text('提前完成任务'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            onPressed: () {
+              Feedback.click();
+              Navigator.pop(ctx, 'cancel');
+            },
             child: const Text('取消'),
           ),
         ],
@@ -161,6 +165,27 @@ class _TimerTabState extends State<TimerTab> {
       default:
         c.cancelStop();
     }
+  }
+
+  /// 弹出底部滚轮选择器（时 / 分 / 秒三列），确认后回填数字。
+  Future<void> _showTimePicker() async {
+    if (!c.isIdle) return; // 运行/暂停中点击数字不弹选择器
+    Feedback.click();
+    final initial = _readInput();
+    final picked = await showModalBottomSheet<Duration>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _TimePickerSheet(initial: initial),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _hours = picked.inHours;
+      _minutes = picked.inMinutes % 60;
+      _seconds = picked.inSeconds % 60;
+    });
   }
 
   @override
@@ -198,24 +223,49 @@ class _TimerTabState extends State<TimerTab> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        if (idle) _buildInput() else _buildStatusInfo(),
+                        if (!idle) _buildStatusInfo(),
                         const SizedBox(height: 16),
                         Flexible(
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
-                            child: Text(
-                              formatHms(display),
-                              maxLines: 1,
-                              style: TextStyle(
-                                fontSize: fontSize,
-                                fontWeight: FontWeight.w600,
-                                fontFeatures: const [FontFeature.tabularFigures()],
-                                letterSpacing: 2,
-                                color: Colors.black87,
+                            child: GestureDetector(
+                              onTap: idle ? _showTimePicker : null,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _flashRed ? _flashColor : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  formatHms(display),
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    fontSize: fontSize,
+                                    fontWeight: FontWeight.w600,
+                                    fontFeatures: const [FontFeature.tabularFigures()],
+                                    letterSpacing: 2,
+                                    color: Colors.black87,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         ),
+                        if (idle)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              '点击数字设置时长',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                          ),
                         const SizedBox(height: 24),
                         _buildButtons(idle, running, paused),
                       ],
@@ -241,48 +291,6 @@ class _TimerTabState extends State<TimerTab> {
       case TimerStatus.paused:
         return '已暂停';
     }
-  }
-
-  Widget _buildInput() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _numberField(_hourCtrl, '时', 3),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 8),
-          child: Text(':', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black54)),
-        ),
-        _numberField(_minuteCtrl, '分', 2),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 8),
-          child: Text(':', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black54)),
-        ),
-        _numberField(_secondCtrl, '秒', 2),
-      ],
-    );
-  }
-
-  Widget _numberField(TextEditingController ctrl, String label, int maxLength) {
-    return SizedBox(
-      width: 72,
-      child: TextField(
-        controller: ctrl,
-        keyboardType: TextInputType.number,
-        textAlign: TextAlign.center,
-        maxLength: maxLength,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(
-          labelText: label,
-          counterText: '',
-          filled: true,
-          fillColor: Colors.white,
-          border: const OutlineInputBorder(),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-        ),
-        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
-      ),
-    );
   }
 
   Widget _buildStatusInfo() {
@@ -337,80 +345,89 @@ class _TimerTabState extends State<TimerTab> {
       mainLabel = '继续';
       mainIcon = Icons.play_arrow;
       mainColor = _resumeColor;
-      mainOnPressed = c.togglePause;
+      mainOnPressed = _onPauseResume;
     } else {
       mainLabel = '暂停';
       mainIcon = Icons.pause;
       mainColor = _danger;
-      mainOnPressed = canPause ? c.togglePause : null; // 第 4 次暂停置灰
+      mainOnPressed = canPause ? _onPauseResume : null; // 第 4 次暂停置灰
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 196,
-          height: 196,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              CircularProgressIndicator(
-                value: progress,
-                strokeWidth: 4,
-                color: _progressColor,
-                backgroundColor: _trackColor,
-              ),
-              SizedBox(
-                width: 180,
-                height: 56,
-                child: FilledButton.icon(
-                  onPressed: mainOnPressed,
-                  icon: Icon(mainIcon, size: 22),
-                  label: Text(mainLabel),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: mainColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-                    textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 重置：圆形图标按钮，位于主按钮左侧
+          _roundIconButton(
+            icon: Icons.refresh,
+            tooltip: '重置',
+            color: Colors.black54,
+            onPressed: _onReset,
+          ),
+          const SizedBox(width: 20),
+          SizedBox(
+            width: 196,
+            height: 196,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: progress,
+                  strokeWidth: 4,
+                  color: _progressColor,
+                  backgroundColor: _trackColor,
+                ),
+                SizedBox(
+                  width: 180,
+                  height: 56,
+                  child: FilledButton.icon(
+                    onPressed: mainOnPressed,
+                    icon: Icon(mainIcon, size: 22),
+                    label: Text(mainLabel),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: mainColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                      textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
+          const SizedBox(width: 20),
+          // 停止：圆形图标按钮，位于主按钮右侧
+          _roundIconButton(
+            icon: Icons.stop,
+            tooltip: '停止',
+            color: _danger,
+            onPressed: (running || paused) ? _onStop : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _roundIconButton({
+    required IconData icon,
+    required String tooltip,
+    required Color color,
+    VoidCallback? onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 22),
+        style: IconButton.styleFrom(
+          backgroundColor: color.withOpacity(0.08),
+          foregroundColor: color,
+          fixedSize: const Size(52, 52),
+          shape: const CircleBorder(),
+          side: BorderSide(color: color.withOpacity(0.35), width: 1),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: (running || paused) ? _onStop : null,
-                icon: const Icon(Icons.stop, size: 18),
-                label: const Text('停止'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _danger,
-                  side: const BorderSide(color: _danger, width: 1.2),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _onReset,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('重置'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.black54,
-                  side: const BorderSide(color: Colors.black26, width: 1.2),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
+      ),
     );
   }
 
@@ -482,9 +499,74 @@ class _TimerTabState extends State<TimerTab> {
   }
 
   void _onCategoryTap(String label) {
+    Feedback.click();
     setState(() {
       _category = (_category == label) ? null : label;
       _subLabelCtrl.clear();
     });
+  }
+}
+
+/// 底部弹出的滚轮选择器（时 / 分 / 秒三列，iOS 闹钟样式）。
+class _TimePickerSheet extends StatefulWidget {
+  final Duration initial;
+  const _TimePickerSheet({required this.initial});
+
+  @override
+  State<_TimePickerSheet> createState() => _TimePickerSheetState();
+}
+
+class _TimePickerSheetState extends State<_TimePickerSheet> {
+  static const Color _accent = Color(0xFF3F51B5);
+  late Duration _value;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = widget.initial;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton(
+                  onPressed: () {
+                    Feedback.click();
+                    Navigator.pop(context);
+                  },
+                  child: const Text('取消', style: TextStyle(color: Colors.black54)),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Feedback.click();
+                    Navigator.pop(context, _value);
+                  },
+                  child: const Text(
+                    '确认',
+                    style: TextStyle(color: _accent, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 216,
+            child: CupertinoTimerPicker(
+              mode: CupertinoTimerPickerMode.hms,
+              initialTimerDuration: _value,
+              onTimerDurationChanged: (d) => setState(() => _value = d),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
