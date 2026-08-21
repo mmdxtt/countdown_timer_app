@@ -14,7 +14,7 @@ class TimerTab extends StatefulWidget {
   State<TimerTab> createState() => _TimerTabState();
 }
 
-class _TimerTabState extends State<TimerTab> {
+class _TimerTabState extends State<TimerTab> with TickerProviderStateMixin {
   static const List<String> _categories = ['学习', '工作', '健身', '休息', '其他'];
   static const Color _accent = Color(0xFF007AFF); // 主色蓝
   static const Color _danger = Color(0xFFFF3B30); // red（暂停 / 停止）
@@ -23,6 +23,7 @@ class _TimerTabState extends State<TimerTab> {
   static const Color _progressColor = Color(0xFF007AFF); // blue（进度环）
   static const Color _trackColor = Color(0xFFE8E8E8); // 进度环轨道
   static const Color _flashColor = Color(0xFFFFE4E0); // 重置闪烁浅红
+  static const Color _finishFlashRed = Color(0xFFFFCDD2); // 计时结束淡红
 
   final TextEditingController _subLabelCtrl = TextEditingController();
 
@@ -34,6 +35,19 @@ class _TimerTabState extends State<TimerTab> {
   String? _category;
   bool _flashRed = false; // 重置时数字闪烁标记
 
+  // ---- 动画控制器 ----
+  late final AnimationController _resetRotateController; // 重置图标旋转
+  late final Animation<double> _resetRotation;
+
+  late final AnimationController _mainScaleController; // 主按钮按下缩放
+  late final Animation<double> _mainScale;
+
+  late final AnimationController _breatheController; // 计时结束数字呼吸
+  late final Animation<double> _breatheOpacity;
+
+  late final AnimationController _flashScreenController; // 计时结束屏幕闪白转淡红
+  late final Animation<Color?> _flashColorAnim;
+
   TimerController get c => widget.controller;
 
   @override
@@ -41,12 +55,66 @@ class _TimerTabState extends State<TimerTab> {
     super.initState();
     c.onNormalComplete = _showCompletedSnack;
     c.addListener(_onControllerChanged);
+
+    // 重置图标旋转 360 度（300ms，Ease-Out）
+    _resetRotateController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _resetRotation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _resetRotateController, curve: Curves.easeOut),
+    );
+
+    // 主按钮按下缩放：按下 0.92，松开弹性弹回 1.0（100ms，Spring）
+    _mainScaleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _mainScale = Tween<double>(begin: 1.0, end: 0.92).animate(
+      CurvedAnimation(
+        parent: _mainScaleController,
+        curve: Curves.easeOut,
+        reverseCurve: Curves.elasticOut, // 松开时弹性回弹
+      ),
+    );
+
+    // 计时结束数字呼吸（1Hz：500ms 淡出 + 500ms 淡入）
+    _breatheController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _breatheOpacity = Tween<double>(begin: 1.0, end: 0.4).animate(
+      CurvedAnimation(parent: _breatheController, curve: Curves.easeInOut),
+    );
+
+    // 计时结束屏幕闪白 → 淡红 → 恢复（400ms）
+    _flashScreenController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _flashColorAnim = TweenSequence<Color?>([
+      TweenSequenceItem(
+        tween: ColorTween(begin: Colors.white, end: _finishFlashRed),
+        weight: 50,
+      ),
+      TweenSequenceItem(
+        tween: ColorTween(
+          begin: _finishFlashRed,
+          end: _finishFlashRed.withOpacity(0),
+        ),
+        weight: 50,
+      ),
+    ]).animate(_flashScreenController);
   }
 
   @override
   void dispose() {
     c.removeListener(_onControllerChanged);
     _subLabelCtrl.dispose();
+    _resetRotateController.dispose();
+    _mainScaleController.dispose();
+    _breatheController.dispose();
+    _flashScreenController.dispose();
     super.dispose();
   }
 
@@ -67,6 +135,18 @@ class _TimerTabState extends State<TimerTab> {
   void _showCompletedSnack() {
     if (!mounted) return;
     _snack('倒计时结束，有效时长已保存');
+    _playFinishAnimation();
+  }
+
+  /// 计时结束动画：屏幕闪白转淡红（400ms）+ 数字呼吸闪烁（1Hz，约 3 秒）。
+  void _playFinishAnimation() {
+    _flashScreenController.forward(from: 0);
+    _breatheController.repeat(reverse: true);
+    Future<void>.delayed(const Duration(milliseconds: 3000), () {
+      if (!mounted) return;
+      _breatheController.stop();
+      _breatheController.value = 0; // 恢复不透明
+    });
   }
 
   void _snack(String msg) {
@@ -99,7 +179,7 @@ class _TimerTabState extends State<TimerTab> {
   Future<void> _onReset() async {
     AppFeedback.click();
     AppFeedback.hapticLong();
-    // 运行/暂停中先停止并归零控制器状态
+    _resetRotateController.forward(from: 0); // 图标旋转 360 度
     await c.reset();
     if (!mounted) return;
     setState(() {
@@ -166,18 +246,51 @@ class _TimerTabState extends State<TimerTab> {
     }
   }
 
-  /// 弹出底部滚轮选择器（时 / 分 / 秒三列），确认后回填数字。
+  /// 主按钮按下/松开：切换缩放状态。
+  void _setMainPressed(bool pressed) {
+    if (pressed) {
+      _mainScaleController.forward();
+    } else {
+      _mainScaleController.reverse();
+    }
+  }
+
+  /// 弹出底部滚轮选择器（底部滑入滑出 + 蒙层淡入淡出，280ms）。
   Future<void> _showTimePicker() async {
     if (!c.isIdle) return; // 运行/暂停中点击数字不弹选择器
     AppFeedback.click();
     final initial = _readInput();
-    final picked = await showModalBottomSheet<Duration>(
+    final picked = await showGeneralDialog<Duration>(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _TimePickerSheet(initial: initial),
+      barrierDismissible: true,
+      barrierLabel: '关闭',
+      barrierColor: Colors.black.withOpacity(0.4),
+      transitionDuration: const Duration(milliseconds: 280),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+          reverseCurve: Curves.easeIn,
+        );
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Material(
+            color: Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            clipBehavior: Clip.antiAlias,
+            child: _TimePickerSheet(initial: initial),
+          ),
+        );
+      },
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -201,80 +314,94 @@ class _TimerTabState extends State<TimerTab> {
 
         return Scaffold(
           backgroundColor: Colors.white,
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 顶部：App 名称
-                  const Text(
-                    '倒计时',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  // 中间：数字 + 按钮（垂直居中）
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (!idle) _buildStatusInfo(),
-                        const SizedBox(height: 16),
-                        Flexible(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: GestureDetector(
-                              onTap: idle ? _showTimePicker : null,
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 150),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _flashRed ? _flashColor : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  formatHms(display),
-                                  maxLines: 1,
-                                  style: TextStyle(
-                                    fontSize: fontSize,
-                                    fontWeight: FontWeight.w600,
-                                    fontFeatures: const [FontFeature.tabularFigures()],
-                                    letterSpacing: 2,
-                                    color: Colors.black87,
+          body: Stack(
+            children: [
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 顶部：App 名称
+                      const Text(
+                        '倒计时',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      // 中间：数字 + 按钮（垂直居中）
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (!idle) _buildStatusInfo(),
+                            const SizedBox(height: 16),
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: GestureDetector(
+                                  onTap: idle ? _showTimePicker : null,
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 150),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _flashRed
+                                          ? _flashColor
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: FadeTransition(
+                                      opacity: _breatheOpacity,
+                                      child: _PulsingTimeText(
+                                        text: formatHms(display),
+                                        fontSize: fontSize,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
-                        if (idle)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              '▼',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFFCCCCCC),
+                            if (idle)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  '▼',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFFCCCCCC),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        const SizedBox(height: 24),
-                        _buildButtons(idle, running, paused),
-                      ],
-                    ),
+                            const SizedBox(height: 24),
+                            _buildButtons(idle, running, paused),
+                          ],
+                        ),
+                      ),
+                      // 底部：二级输入 + 类别标签 + 提示图标
+                      _buildBottomArea(idle),
+                    ],
                   ),
-                  // 底部：二级输入 + 类别标签 + 提示图标
-                  _buildBottomArea(idle),
-                ],
+                ),
               ),
-            ),
+              // 计时结束：屏幕闪白转淡红 overlay
+              AnimatedBuilder(
+                animation: _flashScreenController,
+                builder: (context, child) {
+                  if (_flashScreenController.isDismissed) {
+                    return const SizedBox.shrink();
+                  }
+                  return IgnorePointer(
+                    child: Container(color: _flashColorAnim.value),
+                  );
+                },
+              ),
+            ],
           ),
         );
       },
@@ -357,12 +484,13 @@ class _TimerTabState extends State<TimerTab> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 重置：圆形图标按钮，位于主按钮左侧
+          // 重置：圆形图标按钮（点击旋转 360 度），位于主按钮左侧
           _roundIconButton(
             icon: Icons.refresh,
             tooltip: '重置',
             color: Colors.black54,
             onPressed: _onReset,
+            iconTurns: _resetRotation,
           ),
           const SizedBox(width: 20),
           SizedBox(
@@ -377,20 +505,11 @@ class _TimerTabState extends State<TimerTab> {
                   color: _progressColor,
                   backgroundColor: _trackColor,
                 ),
-                SizedBox(
-                  width: 180,
-                  height: 56,
-                  child: FilledButton.icon(
-                    onPressed: mainOnPressed,
-                    icon: Icon(mainIcon, size: 22),
-                    label: Text(mainLabel),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: mainColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-                      textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-                    ),
-                  ),
+                _buildMainButton(
+                  label: mainLabel,
+                  icon: mainIcon,
+                  color: mainColor,
+                  onPressed: mainOnPressed,
                 ),
               ],
             ),
@@ -408,17 +527,66 @@ class _TimerTabState extends State<TimerTab> {
     );
   }
 
+  /// 主按钮：按下缩放到 0.92、松开弹性回弹；背景色随状态 200ms 平滑过渡。
+  Widget _buildMainButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback? onPressed,
+  }) {
+    final effectiveColor = onPressed == null ? color.withOpacity(0.4) : color;
+    return GestureDetector(
+      onTap: onPressed,
+      onTapDown: onPressed == null ? null : (_) => _setMainPressed(true),
+      onTapUp: onPressed == null ? null : (_) => _setMainPressed(false),
+      onTapCancel: () => _setMainPressed(false),
+      child: ScaleTransition(
+        scale: _mainScale,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          width: 180,
+          height: 56,
+          decoration: BoxDecoration(
+            color: effectiveColor,
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 22, color: Colors.white),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _roundIconButton({
     required IconData icon,
     required String tooltip,
     required Color color,
     VoidCallback? onPressed,
+    Animation<double>? iconTurns,
   }) {
+    Widget ic = Icon(icon, size: 22);
+    if (iconTurns != null) {
+      ic = RotationTransition(turns: iconTurns, child: ic);
+    }
     return Tooltip(
       message: tooltip,
       child: IconButton(
         onPressed: onPressed,
-        icon: Icon(icon, size: 22),
+        icon: ic,
         style: IconButton.styleFrom(
           backgroundColor: color.withOpacity(0.08),
           foregroundColor: color,
@@ -450,12 +618,7 @@ class _TimerTabState extends State<TimerTab> {
               ),
             ),
           ),
-        Row(
-          children: [
-            for (final cat in _categories)
-              Expanded(child: _categoryLabel(cat, idle)),
-          ],
-        ),
+        _buildCategoryTabs(idle),
         const SizedBox(height: 4),
         Center(
           child: Tooltip(
@@ -467,31 +630,69 @@ class _TimerTabState extends State<TimerTab> {
     );
   }
 
-  /// 底部类别标签：纯文字、无背景，选中时下划线高亮。
+  /// 类别标签：文字颜色渐变 + 下划线从旧标签滑动到新标签。
+  Widget _buildCategoryTabs(bool idle) {
+    final currentCat = idle ? _category : c.category;
+    int selectedIndex = -1;
+    if (currentCat != null) {
+      selectedIndex = _categories.indexOf(currentCat);
+    }
+    // 选中标签的水平对齐（-1 到 1）
+    final x = selectedIndex < 0 ? -1.0 : (2 * selectedIndex - 4) / 5;
+
+    return SizedBox(
+      height: 40,
+      child: Stack(
+        children: [
+          Row(
+            children: [
+              for (final cat in _categories)
+                Expanded(child: _categoryLabel(cat, idle)),
+            ],
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 2,
+            child: AnimatedAlign(
+              alignment: Alignment(x, 0),
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              child: Container(
+                width: 22,
+                height: 2,
+                color: selectedIndex < 0 ? Colors.transparent : _accent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 底部类别标签：纯文字、无背景，文字颜色 200ms 渐变。
   Widget _categoryLabel(String label, bool idle) {
     final bool selected = idle ? (_category == label) : (c.category == label);
+    final color = selected ? _accent : const Color(0xFF999999);
     return InkWell(
       onTap: idle ? () => _onCategoryTap(label) : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
+      child: SizedBox(
+        height: 40,
+        child: Align(
+          alignment: Alignment.center,
+          child: TweenAnimationBuilder<Color>(
+            tween: Tween(end: color),
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            builder: (context, value, child) => Text(
               label,
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: selected ? _accent : const Color(0xFF999999),
+                color: value,
               ),
             ),
-            const SizedBox(height: 4),
-            Container(
-              height: 2,
-              width: 22,
-              color: selected ? _accent : Colors.transparent,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -503,6 +704,68 @@ class _TimerTabState extends State<TimerTab> {
       _category = (_category == label) ? null : label;
       _subLabelCtrl.clear();
     });
+  }
+}
+
+/// 计时数字：每秒变化时缩放脉冲（瞬间 1.08x，150ms 弹性回弹）。
+class _PulsingTimeText extends StatefulWidget {
+  final String text;
+  final double fontSize;
+  const _PulsingTimeText({required this.text, required this.fontSize});
+
+  @override
+  State<_PulsingTimeText> createState() => _PulsingTimeTextState();
+}
+
+class _PulsingTimeTextState extends State<_PulsingTimeText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    // 初始停在 1.0（value=1），触发脉冲时 forward(from:0) 瞬间跳到 1.08 再弹回。
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+      value: 1.0,
+    );
+    _scale = Tween<double>(begin: 1.08, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _PulsingTimeText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _controller.forward(from: 0); // 数字变化 → 脉冲
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scale,
+      child: Text(
+        widget.text,
+        maxLines: 1,
+        style: TextStyle(
+          fontSize: widget.fontSize,
+          fontWeight: FontWeight.w600,
+          fontFeatures: const [FontFeature.tabularFigures()],
+          letterSpacing: 2,
+          color: Colors.black87,
+        ),
+      ),
+    );
   }
 }
 

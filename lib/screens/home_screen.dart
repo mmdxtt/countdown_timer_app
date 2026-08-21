@@ -30,15 +30,35 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _goToTimer() => setState(() => _index = 0);
 
+  /// 单个 Tab 容器：保活 + 淡入淡出（opacity 走 GPU 合成层，硬件加速）。
+  Widget _buildTab(int idx, Widget child) {
+    final visible = _index == idx;
+    return IgnorePointer(
+      ignoring: !visible,
+      child: AnimatedOpacity(
+        opacity: visible ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeInOut,
+        child: child,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // IndexedStack 保证切换 Tab 时倒计时状态不丢失、计时不中断
-      body: IndexedStack(
-        index: _index,
+      // Stack + AnimatedOpacity 交叉淡化：两个 Tab 都保活（计时不中断），
+      // 切换时各 150ms 淡入/淡出，重叠执行。
+      body: Stack(
         children: [
-          TimerTab(controller: _controller),
-          StatsTab(controller: _controller, onGoToTimer: _goToTimer),
+          _buildTab(
+            0,
+            TimerTab(controller: _controller),
+          ),
+          _buildTab(
+            1,
+            StatsTab(controller: _controller, onGoToTimer: _goToTimer),
+          ),
         ],
       ),
       bottomNavigationBar: Container(
