@@ -1,6 +1,5 @@
 import 'dart:ui' show FontFeature;
 
-import 'package:flutter/cupertino.dart' show CupertinoTimerPicker, CupertinoTimerPickerMode;
 import 'package:flutter/material.dart';
 
 import '../services/timer_controller.dart';
@@ -17,7 +16,7 @@ class TimerTab extends StatefulWidget {
 
 class _TimerTabState extends State<TimerTab> {
   static const List<String> _categories = ['学习', '工作', '健身', '休息', '其他'];
-  static const Color _accent = Color(0xFF3F51B5); // indigo
+  static const Color _accent = Color(0xFF007AFF); // 主色蓝
   static const Color _danger = Color(0xFFFF3B30); // red（暂停 / 停止）
   static const Color _startColor = Color(0xFF00C853); // green（开始）
   static const Color _resumeColor = Color(0xFFFF9500); // orange（继续）
@@ -259,10 +258,10 @@ class _TimerTabState extends State<TimerTab> {
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Text(
-                              '点击数字设置时长',
+                              '▼',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.grey.shade500,
+                                color: Color(0xFFCCCCCC),
                               ),
                             ),
                           ),
@@ -483,7 +482,7 @@ class _TimerTabState extends State<TimerTab> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: selected ? _accent : Colors.grey.shade600,
+                color: selected ? _accent : const Color(0xFF999999),
               ),
             ),
             const SizedBox(height: 4),
@@ -517,13 +516,17 @@ class _TimePickerSheet extends StatefulWidget {
 }
 
 class _TimePickerSheetState extends State<_TimePickerSheet> {
-  static const Color _accent = Color(0xFF3F51B5);
-  late Duration _value;
+  static const Color _blue = Color(0xFF007AFF);
+  late int _hours;
+  late int _minutes;
+  late int _seconds;
 
   @override
   void initState() {
     super.initState();
-    _value = widget.initial;
+    _hours = widget.initial.inHours.clamp(0, 23);
+    _minutes = widget.initial.inMinutes % 60;
+    _seconds = widget.initial.inSeconds % 60;
   }
 
   @override
@@ -547,26 +550,127 @@ class _TimePickerSheetState extends State<_TimePickerSheet> {
                 TextButton(
                   onPressed: () {
                     AppFeedback.click();
-                    Navigator.pop(context, _value);
+                    Navigator.pop(
+                      context,
+                      Duration(hours: _hours, minutes: _minutes, seconds: _seconds),
+                    );
                   },
                   child: const Text(
                     '确认',
-                    style: TextStyle(color: _accent, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: _blue, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
             ),
           ),
-          SizedBox(
-            height: 216,
-            child: CupertinoTimerPicker(
-              mode: CupertinoTimerPickerMode.hms,
-              initialTimerDuration: _value,
-              onTimerDurationChanged: (d) => setState(() => _value = d),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _WheelColumn(
+                    itemCount: 24,
+                    selectedIndex: _hours,
+                    unit: '小时',
+                    onChanged: (v) => setState(() => _hours = v),
+                  ),
+                ),
+                Expanded(
+                  child: _WheelColumn(
+                    itemCount: 60,
+                    selectedIndex: _minutes,
+                    unit: '分钟',
+                    onChanged: (v) => setState(() => _minutes = v),
+                  ),
+                ),
+                Expanded(
+                  child: _WheelColumn(
+                    itemCount: 60,
+                    selectedIndex: _seconds,
+                    unit: '秒',
+                    onChanged: (v) => setState(() => _seconds = v),
+                  ),
+                ),
+              ],
             ),
           ),
+          const SizedBox(height: 16),
         ],
       ),
+    );
+  }
+}
+
+/// 单列滚轮：数字列表 + 下方单位文字，选中行主色蓝高亮、上下行深灰。
+class _WheelColumn extends StatefulWidget {
+  final int itemCount;
+  final int selectedIndex;
+  final String unit;
+  final ValueChanged<int> onChanged;
+  const _WheelColumn({
+    required this.itemCount,
+    required this.selectedIndex,
+    required this.unit,
+    required this.onChanged,
+  });
+
+  @override
+  State<_WheelColumn> createState() => _WheelColumnState();
+}
+
+class _WheelColumnState extends State<_WheelColumn> {
+  static const Color _selected = Color(0xFF007AFF); // 选中行主色蓝
+  static const Color _dim = Color(0xFF555555); // 上下行深灰
+  late final FixedExtentScrollController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = FixedExtentScrollController(initialItem: widget.selectedIndex);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: 180,
+          child: ListWheelScrollView.useDelegate(
+            controller: _controller,
+            itemExtent: 36,
+            physics: const FixedExtentScrollPhysics(),
+            onSelectedItemChanged: widget.onChanged,
+            childDelegate: ListWheelChildBuilderDelegate(
+              childCount: widget.itemCount,
+              builder: (context, index) {
+                final selected = index == widget.selectedIndex;
+                return Center(
+                  child: Text(
+                    index.toString().padLeft(2, '0'),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                      color: selected ? _selected : _dim,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          widget.unit,
+          style: const TextStyle(fontSize: 12, color: Color(0xFF999999)),
+        ),
+      ],
     );
   }
 }

@@ -41,21 +41,41 @@ class _HomeScreenState extends State<HomeScreen> {
           StatsTab(controller: _controller, onGoToTimer: _goToTimer),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.timer_outlined),
-            selectedIcon: Icon(Icons.timer),
-            label: '倒计时任务',
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFEEEEEE), width: 1)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Row(
+            children: [
+              Expanded(child: _tabItem('倒计时任务', 0)),
+              Container(width: 1, height: 20, color: const Color(0xFFEEEEEE)),
+              Expanded(child: _tabItem('数据统计', 1)),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart),
-            label: '数据统计',
+        ),
+      ),
+    );
+  }
+
+  /// 底部纯文字 Tab 项：选中主色蓝 + 加粗，未选中浅灰。
+  Widget _tabItem(String label, int idx) {
+    final selected = _index == idx;
+    return InkWell(
+      onTap: () => setState(() => _index = idx),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected ? const Color(0xFF007AFF) : const Color(0xFF999999),
           ),
-        ],
+        ),
       ),
     );
   }
