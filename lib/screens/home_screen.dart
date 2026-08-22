@@ -30,16 +30,36 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _goToTimer() => setState(() => _index = 0);
 
-  /// 单个 Tab 容器：保活 + 淡入淡出（opacity 走 GPU 合成层，硬件加速）。
+  /// 单个 Tab 容器：保活 + iOS 风格水平滑动 + 轻微淡入淡出。
+  /// 选中 Tab 居中，未选中的 Tab 按 index 关系滑到屏幕左/右外（各 300ms）。
   Widget _buildTab(int idx, Widget child) {
-    final visible = _index == idx;
+    final current = _index;
+    double x;
+    double opacity;
+    if (current == idx) {
+      x = 0;
+      opacity = 1.0;
+    } else if (idx < current) {
+      x = -1;
+      opacity = 0.7;
+    } else {
+      x = 1;
+      opacity = 0.7;
+    }
     return IgnorePointer(
-      ignoring: !visible,
+      ignoring: current != idx,
       child: AnimatedOpacity(
-        opacity: visible ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeInOut,
-        child: child,
+        opacity: opacity,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOutCubic,
+        child: AnimatedAlign(
+          alignment: Alignment(x, 0),
+          widthFactor: 1,
+          heightFactor: 1,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOutCubic,
+          child: child,
+        ),
       ),
     );
   }

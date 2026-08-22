@@ -56,25 +56,25 @@ class _TimerTabState extends State<TimerTab> with TickerProviderStateMixin {
     c.onNormalComplete = _showCompletedSnack;
     c.addListener(_onControllerChanged);
 
-    // 重置图标旋转 360 度（300ms，Ease-Out）
+    // 重置图标旋转 360 度（300ms，Ease-Out Cubic）
     _resetRotateController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
     _resetRotation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _resetRotateController, curve: Curves.easeOut),
+      CurvedAnimation(parent: _resetRotateController, curve: Curves.easeOutCubic),
     );
 
-    // 主按钮按下缩放：按下 0.92，松开弹性弹回 1.0（100ms，Spring）
+    // 主按钮按下缩放：按下 0.95，松开温和回弹 1.0（100ms，Ease-Out Back）
     _mainScaleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 100),
     );
-    _mainScale = Tween<double>(begin: 1.0, end: 0.92).animate(
+    _mainScale = Tween<double>(begin: 1.0, end: 0.95).animate(
       CurvedAnimation(
         parent: _mainScaleController,
         curve: Curves.easeOut,
-        reverseCurve: Curves.elasticOut, // 松开时弹性回弹
+        reverseCurve: Curves.easeOutBack, // 松开时温和回弹
       ),
     );
 
@@ -83,26 +83,29 @@ class _TimerTabState extends State<TimerTab> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
-    _breatheOpacity = Tween<double>(begin: 1.0, end: 0.4).animate(
+    _breatheOpacity = Tween<double>(begin: 1.0, end: 0.6).animate(
       CurvedAnimation(parent: _breatheController, curve: Curves.easeInOut),
     );
 
-    // 计时结束屏幕闪白 → 淡红 → 恢复（400ms）
+    // 计时结束：淡红快速淡入（150ms）→ 缓慢淡出（250ms），总 400ms
     _flashScreenController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
     _flashColorAnim = TweenSequence<Color?>([
       TweenSequenceItem(
-        tween: ColorTween(begin: Colors.white, end: _finishFlashRed),
-        weight: 50,
+        tween: ColorTween(
+          begin: _finishFlashRed.withOpacity(0),
+          end: _finishFlashRed,
+        ),
+        weight: 37.5, // 前 150ms 快速淡入
       ),
       TweenSequenceItem(
         tween: ColorTween(
           begin: _finishFlashRed,
           end: _finishFlashRed.withOpacity(0),
         ),
-        weight: 50,
+        weight: 62.5, // 后 250ms 缓慢淡出
       ),
     ]).animate(_flashScreenController);
   }
@@ -264,13 +267,13 @@ class _TimerTabState extends State<TimerTab> with TickerProviderStateMixin {
       context: context,
       barrierDismissible: true,
       barrierLabel: '关闭',
-      barrierColor: Colors.black.withOpacity(0.4),
+      barrierColor: Colors.black.withOpacity(0.35),
       transitionDuration: const Duration(milliseconds: 280),
       transitionBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
           parent: animation,
-          curve: Curves.easeOut,
-          reverseCurve: Curves.easeIn,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
         );
         return SlideTransition(
           position: Tween<Offset>(
@@ -527,7 +530,7 @@ class _TimerTabState extends State<TimerTab> with TickerProviderStateMixin {
     );
   }
 
-  /// 主按钮：按下缩放到 0.92、松开弹性回弹；背景色随状态 200ms 平滑过渡。
+  /// 主按钮：按下缩放到 0.95、松开温和回弹；背景色随状态 200ms 平滑过渡。
   Widget _buildMainButton({
     required String label,
     required IconData icon,
@@ -544,7 +547,7 @@ class _TimerTabState extends State<TimerTab> with TickerProviderStateMixin {
         scale: _mainScale,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          curve: Curves.easeInOut,
+          curve: Curves.easeInOutCubic,
           width: 180,
           height: 56,
           decoration: BoxDecoration(
@@ -657,7 +660,7 @@ class _TimerTabState extends State<TimerTab> with TickerProviderStateMixin {
             child: AnimatedAlign(
               alignment: Alignment(x, 0),
               duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
+              curve: Curves.easeOutCubic,
               child: Container(
                 width: 22,
                 height: 2,
@@ -725,14 +728,14 @@ class _PulsingTimeTextState extends State<_PulsingTimeText>
   @override
   void initState() {
     super.initState();
-    // 初始停在 1.0（value=1），触发脉冲时 forward(from:0) 瞬间跳到 1.08 再弹回。
+    // 初始停在 1.0（value=1），触发脉冲时 forward(from:0) 瞬间跳到 1.05 再温和回弹。
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 150),
       value: 1.0,
     );
-    _scale = Tween<double>(begin: 1.08, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
+    _scale = Tween<double>(begin: 1.05, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
   }
 
