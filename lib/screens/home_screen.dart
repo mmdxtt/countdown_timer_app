@@ -31,7 +31,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void _goToTimer() => setState(() => _index = 0);
 
   /// 单个 Tab 容器：保活 + iOS 风格水平滑动 + 轻微淡入淡出。
-  /// 选中 Tab 居中，未选中的 Tab 按 index 关系滑到屏幕左/右外（各 300ms）。
+  /// 选中 Tab 居中（offset 0），未选中的 Tab 按 index 关系滑到屏幕外（左 -1 / 右 +1），
+  /// opacity 同步 1.0 ↔ 0.7（300ms easeInOutCubic）。
+  /// 注意：用 AnimatedSlide（FractionalTranslation）而非 AnimatedAlign——
+  /// 后者的 alignment(1,0) 只把 child 中心对齐到父边缘，child 仍有一半在屏内；
+  /// 前者 offset(1,0) 才把整个 child 平移出父外。
   Widget _buildTab(int idx, Widget child) {
     final current = _index;
     double x;
@@ -52,10 +56,8 @@ class _HomeScreenState extends State<HomeScreen> {
         opacity: opacity,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOutCubic,
-        child: AnimatedAlign(
-          alignment: Alignment(x, 0),
-          widthFactor: 1,
-          heightFactor: 1,
+        child: AnimatedSlide(
+          offset: Offset(x, 0),
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOutCubic,
           child: child,
